@@ -1,10 +1,21 @@
-from pydantic import BaseModel,Field
-from typing import Literal
+from datetime import datetime
 
-class UserQueryBody(BaseModel):
-    query:str=Field(...,min_length=3,max_length=500,description="User's research query")
+from pydantic import BaseModel, Field
 
-class UserQueryResponse(BaseModel):
-    id:int
-    query:str
-    status:Literal["created","processing","failed","completed"]
+from research_copilot_server.models.research import ResearchStatus
+
+
+class user_query_body(BaseModel):
+    query: str = Field(..., min_length=3, max_length=500, description="User's research query")
+
+
+class user_query_response(BaseModel):
+    id: int
+    query: str
+    status: ResearchStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class update_research_body(BaseModel):
+    status: ResearchStatus
