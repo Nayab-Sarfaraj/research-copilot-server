@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from research_copilot_server.models.research import ResearchStatus
+from research_copilot_server.schema.report import research_report_response
 
 
 class user_query_body(BaseModel):
@@ -15,6 +16,12 @@ class user_query_response(BaseModel):
     status: ResearchStatus
     created_at: datetime
     updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class create_research_response(user_query_response):
+    report: research_report_response
 
 
 class update_research_body(BaseModel):

@@ -1,8 +1,9 @@
 from research_copilot_server.config.db import Base  
 from datetime import datetime,timezone
 from sqlalchemy.orm import mapped_column,Mapped
-from sqlalchemy import String,Enum as SqlEnum
+from sqlalchemy import String,Enum as SqlEnum,ForeignKey
 from enum import Enum
+from sqlalchemy.orm import relationship
 
 def utc_now():
     return datetime.now(timezone.utc)
@@ -33,4 +34,9 @@ class Research(Base):
         default=utc_now,
         onupdate=utc_now,
         nullable=False
+    )
+    report: Mapped["ResearchReport"] = relationship(
+        "ResearchReport",
+        back_populates="research",
+        uselist=False
     )

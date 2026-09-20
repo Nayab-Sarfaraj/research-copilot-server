@@ -2,15 +2,20 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from research_copilot_server.config.db import get_db
-from research_copilot_server.schema.research import user_query_body, user_query_response, update_research_body
+from research_copilot_server.schema.research import (
+    create_research_response,
+    update_research_body,
+    user_query_body,
+    user_query_response,
+)
 from research_copilot_server.services import research as research_service
 
 router = APIRouter()
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=user_query_response)
-def register_user_query(user_query: user_query_body, db: Session = Depends(get_db)):
-    research = research_service.create_research(db, user_query)
+@router.post("/", status_code=status.HTTP_201_CREATED, response_model=create_research_response)
+async def register_user_query(user_query: user_query_body, db: Session = Depends(get_db)):
+    research = await research_service.create_research(db, user_query)
     return research
 
 

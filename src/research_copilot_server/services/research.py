@@ -1,12 +1,21 @@
 from fastapi import HTTPException, status
 
 from research_copilot_server.models.research import Research
+from research_copilot_server.models.research_reports import ResearchReport
 from research_copilot_server.repository import research as research_repository
+from research_copilot_server.services import llm
 
-
-def create_research(db, data):
+async def create_research(db, data):
+    report_data = await llm.generate_response(data.query)
     research = Research(query=data.query)
+    report = ResearchReport(
+        title=report_data.title,
+        summary=report_data.summary,
+        content=report_data.content,
+        research=research,
+    )
     return research_repository.create_research(db, research)
+
 
 
 def get_all_research(db):
