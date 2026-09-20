@@ -38,5 +38,7 @@ class Research(Base):
     report: Mapped["ResearchReport"] = relationship(
         "ResearchReport",
         back_populates="research",
-        uselist=False
+        uselist=False,
+        cascade="all, delete-orphan"
+
     )

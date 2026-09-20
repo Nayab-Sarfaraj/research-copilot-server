@@ -29,7 +29,7 @@ async def create_research(db, data):
         return research_repository.update_research(
             db,
             research.id,
-            {"status": ResearchStatus.COMPLETED}
+            update_research_body(status= ResearchStatus.COMPLETED)
         )
 
     except Exception:
