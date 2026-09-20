@@ -13,7 +13,7 @@ from research_copilot_server.services import research as research_service
 router = APIRouter()
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=create_research_response)
+@router.post("/", status_code=status.HTTP_201_CREATED, response_model=user_query_response)
 async def register_user_query(user_query: user_query_body, db: Session = Depends(get_db)):
     research = await research_service.create_research(db, user_query)
     return research

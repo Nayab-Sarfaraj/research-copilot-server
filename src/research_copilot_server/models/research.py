@@ -9,6 +9,7 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 class ResearchStatus(str,Enum):
+    QUEUED="queued"
     CREATED="created"
     PROCESSING="processing"
     FAILED="failed"
