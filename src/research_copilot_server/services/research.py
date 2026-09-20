@@ -1,20 +1,45 @@
 from fastapi import HTTPException, status
-
+from research_copilot_server.models.research import ResearchStatus
 from research_copilot_server.models.research import Research
 from research_copilot_server.models.research_reports import ResearchReport
 from research_copilot_server.repository import research as research_repository
 from research_copilot_server.services import llm
+from research_copilot_server.schema.research import update_research_body
 
 async def create_research(db, data):
-    report_data = await llm.generate_response(data.query)
-    research = Research(query=data.query)
-    report = ResearchReport(
-        title=report_data.title,
-        summary=report_data.summary,
-        content=report_data.content,
-        research=research,
+
+    research = Research(
+        query=data.query,
+        status=ResearchStatus.PROCESSING,
     )
-    return research_repository.create_research(db, research)
+
+    research = research_repository.create_research(db, research)
+
+    try:
+        report_data = await llm.generate_response(data.query)
+
+        research.report = ResearchReport(
+            title=report_data.title,
+            summary=report_data.summary,
+            content=report_data.content,
+        )
+
+        research.status = ResearchStatus.COMPLETED
+
+        return research_repository.update_research(
+            db,
+            research.id,
+            {"status": ResearchStatus.COMPLETED}
+        )
+
+    except Exception:
+        research.status = ResearchStatus.FAILED
+
+        return research_repository.update_research(
+            db,
+            research.id,
+            update_research_body(status=ResearchStatus.FAILED)
+        )
 
 
 
