@@ -5,6 +5,7 @@ from research_copilot_server.models.research_reports import ResearchReport
 from research_copilot_server.repository import research as research_repository
 from research_copilot_server.services import llm
 from research_copilot_server.schema.research import update_research_body
+from research_copilot_server.services.workflow import workflow
 
 async def create_research(db, data):
 
@@ -16,12 +17,14 @@ async def create_research(db, data):
     research = research_repository.create_research(db, research)
 
     try:
-        report_data = await llm.generate_response(data.query)
+        # report_data = await llm.generate_response(data.query)
+        report_data = await workflow.ainvoke({"query": data.query})
+      
 
         research.report = ResearchReport(
-            title=report_data.title,
-            summary=report_data.summary,
-            content=report_data.content,
+            title=report_data["title"],
+            summary=report_data["summary"],
+            content=report_data["content"],
         )
 
         research.status = ResearchStatus.COMPLETED
