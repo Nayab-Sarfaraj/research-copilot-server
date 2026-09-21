@@ -14,6 +14,7 @@ class user_query_response(BaseModel):
     id: int
     query: str
     status: ResearchStatus
+    error_message: str | None = None
     created_at: datetime
     updated_at: datetime
 

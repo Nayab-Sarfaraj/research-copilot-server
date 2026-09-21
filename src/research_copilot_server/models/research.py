@@ -25,6 +25,7 @@ class Research(Base):
         default=ResearchStatus.CREATED,
         nullable=False
     )
+    error_message: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
     default=utc_now,
