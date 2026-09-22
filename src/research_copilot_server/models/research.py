@@ -44,3 +44,8 @@ class Research(Base):
         cascade="all, delete-orphan"
 
     )
+    sources: Mapped[list["ResearchSource"]] = relationship(
+        "ResearchSource",
+        back_populates="research",
+        cascade="all, delete-orphan",
+    )

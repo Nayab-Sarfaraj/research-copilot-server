@@ -4,6 +4,7 @@ import inngest
 from research_copilot_server.config.db import SessionLocal
 from research_copilot_server.models.research import ResearchStatus
 from research_copilot_server.models.research_reports import ResearchReport
+from research_copilot_server.models.research_source import ResearchSource
 from research_copilot_server.repository import research as research_repository
 from research_copilot_server.services.workflow import workflow
 
@@ -38,6 +39,7 @@ async def _run_workflow(query: str) -> dict[str, str]:
             "query": query,
             "messages": [],
             "search_count": 0,
+            "sources": [],
         }
     )
 
@@ -45,6 +47,7 @@ async def _run_workflow(query: str) -> dict[str, str]:
         "title": report_data["title"],
         "summary": report_data["summary"],
         "content": report_data["content"],
+        "sources": report_data.get("sources", []),
     }
 
 
@@ -78,6 +81,17 @@ async def _save_report(research_id: int, report_data: dict[str, str]) -> str:
             summary=report_data["summary"],
             content=report_data["content"],
         )
+
+        for source in report_data.get("sources", []):
+            research.sources.append(
+                ResearchSource(
+                    title=source.get("title") or "Unknown source",
+                    url=source.get("url"),
+                    source_type=source.get("source_type"),
+                    source_metadata=source.get("metadata", {}),
+                )
+            )
+
         research.status = ResearchStatus.COMPLETED
         db.commit()
         return f"Research {research_id} completed"

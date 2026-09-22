@@ -31,6 +31,7 @@ class ResearchState(TypedDict):
     title: str
     summary: str
     content: str
+    sources: list[dict]
 
 
 
@@ -61,6 +62,15 @@ async def web_search(query: str) -> str:
     return json.dumps(compact_result)[:MAX_TOOL_RESULT_CHARS]
 
 
+def _web_source_from_item(item: dict) -> dict:
+    return {
+        "title": item.get("title") or "Web source",
+        "url": item.get("url"),
+        "source_type": "web",
+        "metadata": {},
+    }
+
+
 @tool
 def knowledge_search(query: str) -> str:
     """Search uploaded document chunks for information relevant to the research query."""
@@ -74,6 +84,17 @@ def knowledge_search(query: str) -> str:
         for result in results[:2]
     ]
     return json.dumps(compact_results)
+
+
+def _document_source_from_result(result: dict) -> dict:
+    metadata = result.get("metadata") or {}
+    title = metadata.get("source") or "Uploaded document"
+    return {
+        "title": title,
+        "url": None,
+        "source_type": "document",
+        "metadata": {k: v for k, v in metadata.items() if k != "source"},
+    }
 
 
 research_tools = [web_search, knowledge_search]
@@ -128,6 +149,7 @@ def _messages_for_model(messages: list[BaseMessage]) -> list[BaseMessage]:
 async def researcher(state: ResearchState):
     research_model = model.bind_tools(research_tools)
     messages = list(state.get("messages", []))
+    source_list = list(state.get("sources", []))
     if not messages:
         messages.append(
             HumanMessage(
@@ -150,9 +172,27 @@ async def researcher(state: ResearchState):
     response = await research_model.ainvoke(_messages_for_model(messages))
     messages.append(response)
 
+    for message in messages:
+        if getattr(message, "type", None) != "tool":
+            continue
+        raw = _message_text(message)
+        if not isinstance(raw, str):
+            continue
+        try:
+            payload = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("results"), list):
+            for item in payload["results"]:
+                source_list.append(_web_source_from_item(item))
+        elif isinstance(payload, list):
+            for item in payload:
+                source_list.append(_document_source_from_result(item))
+
     return {
         "messages": messages if len(state.get("messages", [])) == 0 else [response],
         "research": _research_context(messages),
+        "sources": source_list,
     }
 
 async def planner(state: ResearchState):
