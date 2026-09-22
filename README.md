@@ -64,24 +64,24 @@ graph TB
         Embed["BGE-small-en-v1.5<br/>local, 384-dim"]
     end
 
-    UI -->|POST /research {query}| Routes
-    UI -->|POST /document PDF| Routes
-    UI -->|GET /research/:id poll| Routes
+    UI -->|POST research query| Routes
+    UI -->|POST document PDF| Routes
+    UI -->|poll research by id| Routes
     Routes --> Svc
     Svc --> Repo
     Repo <--> PG
-    Svc -->|INSERT queued + send event| Fn
+    Svc -->|enqueue job| Fn
     Svc -->|encode chunks| Embed
-    Fn -->|mark-processing| PG
+    Fn -->|mark processing| PG
     Fn -->|ainvoke| Planner
     Planner --> Researcher
-    Researcher -->|web_search| Tavily
-    Researcher -->|knowledge_search| PG
-    PG -.->|top-k chunks| Researcher
+    Researcher -->|web search| Tavily
+    Researcher -->|knowledge search| PG
+    PG -.->|top k chunks| Researcher
     Researcher --> Writer
     Writer --> Groq
     Planner --> Groq
-    Fn -->|save report + sources| PG
+    Fn -->|save report| PG
 ```
 
 HTTP is thin (validate → CRUD → enqueue). All LLM / search cost lives in Inngest steps so requests never block. Postgres is the single source of truth — jobs, vectors, reports, and citations all live there. Redis ships in `docker-compose.yaml` for future queue/caching; current job transport is Inngest.
