@@ -60,6 +60,7 @@ async def web_search(query: str) -> str:
         ],
     }
     return json.dumps(compact_result)[:MAX_TOOL_RESULT_CHARS]
+    return json.dumps(compact_result)
 
 
 def _web_source_from_item(item: dict) -> dict:
@@ -189,10 +190,21 @@ async def researcher(state: ResearchState):
             for item in payload:
                 source_list.append(_document_source_from_result(item))
 
+    unique_sources = {
+        (
+            source["source_type"],
+            source.get("url"),
+            source["title"],
+            json.dumps(source.get("metadata", {}), sort_keys=True),
+        ): source
+        for source in source_list
+    }
+
     return {
         "messages": messages if len(state.get("messages", [])) == 0 else [response],
         "research": _research_context(messages),
         "sources": source_list,
+        "sources": list(unique_sources.values()),
     }
 
 async def planner(state: ResearchState):

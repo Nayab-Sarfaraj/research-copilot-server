@@ -33,6 +33,7 @@ async def _mark_processing(research_id: int) -> dict[str, int | str]:
 
 
 async def _run_workflow(query: str) -> dict[str, str]:
+async def _run_workflow(query: str) -> dict:
     
     report_data = await workflow.ainvoke(
         {
