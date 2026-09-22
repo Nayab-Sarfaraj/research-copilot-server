@@ -59,7 +59,7 @@ async def web_search(query: str) -> str:
             for item in result.get("results", [])[:3]
         ],
     }
-    return json.dumps(compact_result)[:MAX_TOOL_RESULT_CHARS]
+  
     return json.dumps(compact_result)
 
 
@@ -203,7 +203,6 @@ async def researcher(state: ResearchState):
     return {
         "messages": messages if len(state.get("messages", [])) == 0 else [response],
         "research": _research_context(messages),
-        "sources": source_list,
         "sources": list(unique_sources.values()),
     }
 
