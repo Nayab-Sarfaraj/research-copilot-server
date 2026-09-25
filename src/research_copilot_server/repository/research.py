@@ -1,6 +1,5 @@
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 
-from research_copilot_server.models.research import Research
 from research_copilot_server.models.research import Research, ResearchStatus
 
 
@@ -20,8 +19,24 @@ def create_research(db, research):
     return research
 
 
-def get_all_research(db):
-    researches = db.scalars(select(Research)).all()
+def get_paginated_research(db, page: int = 1, limit: int = 10):
+    page = max(1, page)
+    limit = max(1, limit)
+    offset = (page - 1) * limit
+    total = db.scalar(select(func.count(Research.id))) or 0
+    items = db.scalars(
+        select(Research)
+        .order_by(Research.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    return items, total
+
+
+def get_all_research(db, page: int | None = None, limit: int | None = None):
+    if page is not None and limit is not None:
+        return get_paginated_research(db, page=page, limit=limit)
+    researches = db.scalars(select(Research).order_by(Research.created_at.desc())).all()
     return researches
 
 

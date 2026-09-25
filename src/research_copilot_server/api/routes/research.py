@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from research_copilot_server.config.db import get_db
 from research_copilot_server.schema.research import (
     create_research_response,
+    paginated_research_response,
     update_research_body,
     user_query_body,
     user_query_response,
@@ -13,15 +14,21 @@ from research_copilot_server.services import research as research_service
 router = APIRouter()
 
 
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=user_query_response, include_in_schema=False)
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=user_query_response)
 async def register_user_query(user_query: user_query_body, db: Session = Depends(get_db)):
     research = await research_service.create_research(db, user_query)
     return research
 
 
-@router.get("/", status_code=status.HTTP_200_OK, response_model=list[user_query_response])
-def get_all_research(db: Session = Depends(get_db)):
-    return research_service.get_all_research(db)
+@router.get("", status_code=status.HTTP_200_OK, response_model=paginated_research_response, include_in_schema=False)
+@router.get("/", status_code=status.HTTP_200_OK, response_model=paginated_research_response)
+def get_all_research(
+    page: int = Query(default=1, ge=1, description="Page number"),
+    limit: int = Query(default=10, ge=1, le=100, description="Items per page"),
+    db: Session = Depends(get_db),
+):
+    return research_service.get_paginated_research(db, page=page, limit=limit)
 
 
 @router.get("/{research_id}", status_code=status.HTTP_200_OK, response_model=user_query_response)

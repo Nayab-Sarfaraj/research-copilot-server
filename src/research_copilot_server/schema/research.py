@@ -27,3 +27,15 @@ class create_research_response(user_query_response):
 
 class update_research_body(BaseModel):
     status: ResearchStatus
+
+
+class paginated_research_response(BaseModel):
+    items: list[user_query_response]
+    page: int
+    limit: int
+    total: int
+
+    model_config = {"from_attributes": True}
+
+
+PaginatedResearchResponse = paginated_research_response

@@ -1,8 +1,7 @@
 from fastapi import HTTPException, status
 import inngest
 
-from research_copilot_server.models.research import ResearchStatus
-from research_copilot_server.models.research import Research
+from research_copilot_server.models.research import Research, ResearchStatus
 from research_copilot_server.inngest.index import inngest_client
 from research_copilot_server.repository import research as research_repository
 from research_copilot_server.schema.research import update_research_body
@@ -25,8 +24,18 @@ async def create_research(db, data):
     return research
 
 
-def get_all_research(db):
-    return research_repository.get_all_research(db)
+def get_paginated_research(db, page: int = 1, limit: int = 10):
+    items, total = research_repository.get_paginated_research(db, page=page, limit=limit)
+    return {
+        "items": items,
+        "page": page,
+        "limit": limit,
+        "total": total,
+    }
+
+
+def get_all_research(db, page: int = 1, limit: int = 10):
+    return get_paginated_research(db, page=page, limit=limit)
 
 
 def get_research_by_id(db, research_id):
