@@ -15,15 +15,13 @@ inngest_client = inngest.Inngest(
     logger=logging.getLogger("uvicorn"),
 )
 
-async def _mark_processing(research_id: int) -> dict[str, int | str]:
+async def _get_research(research_id: int) -> dict[str, int | str]:
     db = SessionLocal()
     try:
         research = research_repository.get_research_by_id(db, research_id)
         if research is None:
             raise inngest.NonRetriableError(f"Research {research_id} was not found")
 
-        research.status = ResearchStatus.PROCESSING
-        db.commit()
         return {"id": research.id, "query": research.query}
     except Exception:
         db.rollback()
@@ -32,11 +30,10 @@ async def _mark_processing(research_id: int) -> dict[str, int | str]:
         db.close()
 
 
-async def _run_workflow(query: str) -> dict[str, str]:
-async def _run_workflow(query: str) -> dict:
-    
+async def _run_workflow(research_id: int, query: str) -> dict:
     report_data = await workflow.ainvoke(
         {
+            "research_id": research_id,
             "query": query,
             "messages": [],
             "search_count": 0,
@@ -70,7 +67,7 @@ async def _mark_failed(research_id: int, error: str) -> str:
         db.close()
 
 
-async def _save_report(research_id: int, report_data: dict[str, str]) -> str:
+async def _save_report(research_id: int, report_data: dict) -> str:
     db = SessionLocal()
     try:
         research = research_repository.get_research_by_id(db, research_id)
@@ -127,13 +124,14 @@ async def process_research(ctx: inngest.Context) -> str:
     research_id = int(ctx.event.data["research_id"])
 
     research = await ctx.step.run(
-        "mark-processing",
-        _mark_processing,
+        "get-research",
+        _get_research,
         research_id,
     )
     report_data = await ctx.step.run(
         "run-research-workflow",
         _run_workflow,
+        research["id"],
         research["query"],
     )
 

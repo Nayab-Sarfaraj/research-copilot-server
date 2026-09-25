@@ -1,6 +1,16 @@
 from sqlalchemy import delete, select, update
 
 from research_copilot_server.models.research import Research
+from research_copilot_server.models.research import Research, ResearchStatus
+
+
+def update_status(db, research_id: int, status: ResearchStatus) -> None:
+    research = db.scalar(select(Research).where(Research.id == research_id))
+    if research and research.status != status:
+        research.status = status
+        db.commit()
+
+
 
 
 def create_research(db, research):

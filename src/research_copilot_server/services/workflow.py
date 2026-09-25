@@ -6,7 +6,10 @@ from typing import Annotated, TypedDict
 from dotenv import load_dotenv
 from tavily import TavilyClient
 from langgraph.graph import StateGraph, START, END
+from research_copilot_server.config.db import SessionLocal
 from research_copilot_server.dependencies.model import model
+from research_copilot_server.models.research import ResearchStatus
+from research_copilot_server.repository.research import update_status
 from research_copilot_server.schema.report import model_output
 from langchain_core.tools import tool
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -22,7 +25,17 @@ MAX_SEARCH_COUNT = 3
 MAX_TOOL_RESULT_CHARS = 2000
 MAX_MODEL_CONTEXT_CHARS = 6000
 
+
+def _update_status(research_id: int, status: ResearchStatus) -> None:
+    db = SessionLocal()
+    try:
+        update_status(db, research_id, status)
+    finally:
+        db.close()
+
+
 class ResearchState(TypedDict):
+    research_id: int
     query: str
     plan: str
     research: str
@@ -148,6 +161,7 @@ def _messages_for_model(messages: list[BaseMessage]) -> list[BaseMessage]:
 
 
 async def researcher(state: ResearchState):
+    _update_status(state["research_id"], ResearchStatus.RESEARCHING)
     research_model = model.bind_tools(research_tools)
     messages = list(state.get("messages", []))
     source_list = list(state.get("sources", []))
@@ -207,6 +221,7 @@ async def researcher(state: ResearchState):
     }
 
 async def planner(state: ResearchState):
+    _update_status(state["research_id"], ResearchStatus.PLANNING)
     response = await model.ainvoke(
         f"We have this query: {state['query']}\n"
         "Create a clear plan to answer this query."
@@ -217,6 +232,7 @@ async def planner(state: ResearchState):
 structured_writer = model.with_structured_output(model_output)
 
 async def writer(state: ResearchState):
+    _update_status(state["research_id"], ResearchStatus.WRITING)
     research_context = _research_context(list(state.get("messages", [])))
     response = await structured_writer.ainvoke(
         f"We have this query: {state['query']}\n"
