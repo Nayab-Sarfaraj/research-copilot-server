@@ -318,8 +318,7 @@ docker compose up -d
 uv run alembic upgrade head
 
 # Start API (:8000)
-$env:PYTHONPATH="src"; $env:INNGEST_DEV="1"
-uv run python -m uvicorn research_copilot_server.main:app --reload --port 8000
+$env:PYTHONPATH="src"; $env:INNGEST_DEV="1"; uv run python -m uvicorn research_copilot_server.main:app --reload --port 8000
 
 # Rate limits are in-memory and require one Uvicorn worker per server instance.
 # Use shared storage before running multiple workers or server instances.
