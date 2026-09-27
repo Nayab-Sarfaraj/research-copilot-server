@@ -13,7 +13,7 @@ from research_copilot_server.repository import document as document_repository
 model = SentenceTransformer("BAAI/bge-small-en-v1.5")
 
 
-def process_pdf_document(db, file_name: str, contents: bytes) -> list[Document]:
+def process_pdf_document(db, file_name: str, contents: bytes, user_id: int | None = None) -> list[Document]:
     try:
         doc = fitz.open(stream=contents, filetype="pdf")
     except Exception as exc:
@@ -39,6 +39,7 @@ def process_pdf_document(db, file_name: str, contents: bytes) -> list[Document]:
             embedding = model.encode(chunk)
             documents.append(
                 Document(
+                    user_id=user_id,
                     content=chunk,
                     document_metadata={
                         "source": file_name,

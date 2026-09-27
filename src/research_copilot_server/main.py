@@ -2,9 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import inngest.fast_api
 from research_copilot_server.config.db import engine,Base,get_db
+from research_copilot_server.api.routes.auth import router as auth_router
 from research_copilot_server.api.routes.document import router as document_router
 from research_copilot_server.api.routes.health import router as health_router
 from research_copilot_server.api.routes.research import router as research_router
+import research_copilot_server.models
 from research_copilot_server.inngest.index import inngest,inngest_client,process_research
 
 app = FastAPI()
@@ -24,7 +26,9 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(auth_router, prefix="/auth")
 app.include_router(document_router, prefix="/document")
+app.include_router(document_router, prefix="/documents")
 app.include_router(research_router,prefix="/research")
 
 Base.metadata.create_all(bind=engine)

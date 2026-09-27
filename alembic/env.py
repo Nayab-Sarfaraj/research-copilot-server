@@ -6,8 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from research_copilot_server.config.db import Base,DATABASE_URL
-from research_copilot_server.models.research import Research
-from research_copilot_server.models.research_source import ResearchSource
+import research_copilot_server.models
 
 
 
