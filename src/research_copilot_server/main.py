@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import inngest.fast_api
 from research_copilot_server.config.db import engine,Base,get_db
 from research_copilot_server.api.routes.auth import router as auth_router
@@ -10,6 +13,16 @@ import research_copilot_server.models
 from research_copilot_server.inngest.index import inngest,inngest_client,process_research
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled error for %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 origins = [
     "http://localhost:3000",

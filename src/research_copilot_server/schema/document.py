@@ -19,7 +19,7 @@ class DocumentChunkResponse(BaseModel):
 class DocumentResponse(BaseModel):
     filename: str
     saved_chunk_count: int
-    chunks: list[DocumentChunkResponse] = []
+    chunks: list[DocumentChunkResponse] = Field(default_factory=list)
 
     model_config = {
         "from_attributes": True,

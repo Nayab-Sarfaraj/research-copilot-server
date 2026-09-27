@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from research_copilot_server.config.db import get_db
 from research_copilot_server.dependencies.auth import get_current_user
+from research_copilot_server.dependencies.rate_limit import rate_limit
 from research_copilot_server.models.user import User
 from research_copilot_server.schema.document import DocumentResponse
 from research_copilot_server.services import document as document_service
@@ -14,8 +15,19 @@ from research_copilot_server.services import document as document_service
 router = APIRouter()
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=DocumentResponse, include_in_schema=False)
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=DocumentResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=DocumentResponse,
+    include_in_schema=False,
+    dependencies=[Depends(rate_limit("documents", 10, 3600))],
+)
+@router.post(
+    "/",
+    status_code=status.HTTP_201_CREATED,
+    response_model=DocumentResponse,
+    dependencies=[Depends(rate_limit("documents", 10, 3600))],
+)
 async def upload_document(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),

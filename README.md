@@ -13,7 +13,7 @@ Queue a query · Agent plans, retrieves, cites · Poll until `completed`
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2-orange?style=flat-square)](https://langchain-ai.github.io/langgraph)
 [![Groq](https://img.shields.io/badge/Groq-qwen_27b-F55036?style=flat-square)](src/research_copilot_server/dependencies/model.py)
 [![Tavily](https://img.shields.io/badge/Tavily-advanced_search-1a1a2e?style=flat-square)](src/research_copilot_server/services/workflow.py)
-[![pgvector](https://img.shields.io/badge/pgvector-VECTOR(384)-336791?style=flat-square&logo=postgresql&logoColor=white)](src/research_copilot_server/models/documents.py)
+[![pgvector](<https://img.shields.io/badge/pgvector-VECTOR(384)-336791?style=flat-square&logo=postgresql&logoColor=white>)](src/research_copilot_server/models/documents.py)
 [![Inngest](https://img.shields.io/badge/Inngest-jobs-5B5BD6?style=flat-square)](src/research_copilot_server/inngest/index.py)
 [![Python](https://img.shields.io/badge/Python-3.13%2B-blue?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
 
@@ -283,15 +283,15 @@ class ResearchState(TypedDict):
 
 Copy to `.env` at repo root (`load_dotenv()` runs in `config/db.py`, `workflow.py`, `dependencies/model.py`).
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | SQLAlchemy URL, e.g. `postgresql+psycopg2://postgres:postgres@localhost:5433/research_copilot` |
-| `GROQ_API_KEY` | Groq API key (planner / researcher / writer) |
-| `TAVILY_API_KEY` | Tavily API key — if absent, `web_search` returns `{"error": ...}` instead of raising |
-| `GROQ_MODEL` | Model id, defaults to `qwen/qwen3.8-27b` |
-| `REDIS_URL` | `redis://localhost:6379/0` — compose parity, not read by code yet |
-| `INNGEST_DEV` | `1` for local Inngest dev server |
-| `PYTHONPATH` | `src` so `research_copilot_server.*` resolves |
+| Variable         | Description                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`   | SQLAlchemy URL, e.g. `postgresql+psycopg2://postgres:postgres@localhost:5433/research_copilot` |
+| `GROQ_API_KEY`   | Groq API key (planner / researcher / writer)                                                   |
+| `TAVILY_API_KEY` | Tavily API key — if absent, `web_search` returns `{"error": ...}` instead of raising           |
+| `GROQ_MODEL`     | Model id, defaults to `qwen/qwen3.8-27b`                                                       |
+| `REDIS_URL`      | `redis://localhost:6379/0` — compose parity, not read by code yet                              |
+| `INNGEST_DEV`    | `1` for local Inngest dev server                                                               |
+| `PYTHONPATH`     | `src` so `research_copilot_server.*` resolves                                                  |
 
 > Do not commit `.env` — rotate any keys that were ever committed to history.
 
@@ -320,6 +320,9 @@ uv run alembic upgrade head
 # Start API (:8000)
 $env:PYTHONPATH="src"; $env:INNGEST_DEV="1"
 uv run python -m uvicorn research_copilot_server.main:app --reload --port 8000
+
+# Rate limits are in-memory and require one Uvicorn worker per server instance.
+# Use shared storage before running multiple workers or server instances.
 
 # Inngest dev server (second terminal) — bridges jobs to FastAPI
 docker run --rm -p 8288:8288 inngest/inngest inngest dev \
@@ -415,36 +418,36 @@ If `TAVILY_API_KEY` is unset, `tavily_client` is `None` and `web_search` returns
 
 ## Tech Stack
 
-| | Technology | Why |
-|---|---|---|
-| **API** | FastAPI + Uvicorn | Async routes, Pydantic validation, `/docs` for free |
-| **ORM** | SQLAlchemy 2.0 (`mapped_column`) | Typed models, `select/update/delete` constructs in repositories |
-| **Migrations** | Alembic | Ordered `pgvector → research → documents → reports → sources` history |
-| **Vector DB** | Postgres 16 + pgvector `VECTOR(384)` | One DB for jobs + vectors; `cosine_distance` ordered search, no extra service |
-| **Embeddings** | `sentence-transformers:BAAI/bge-small-en-v1.5` | Local, fast, 384-dim matches the column; normalized on query |
-| **Agent** | LangGraph `StateGraph` | Explicit `planner/researcher/tools/writer` graph with a countable loop |
-| **LLM** | LangChain-Groq (`qwen/qwen3.8-27b`) | Cheap structured output (`with_structured_output(model_output)`) with retry |
-| **Web search** | Tavily (`advanced` depth) | Answer + snippets with URLs that map 1:1 to `ResearchSource(web)` |
-| **PDF** | PyMuPDF (`fitz`) + `RecursiveCharacterTextSplitter(1000/150)` | Per-page text that survives scanned-layout gaps; overlap preserves context |
-| **Jobs** | Inngest | Durable steps + retries + failure hook, no broker to run |
-| **Infra** | Docker Compose + `uv` | `pgvector/pg16` + `redis:7-alpine` locally; reproducible Python >=3.13 env |
+|                | Technology                                                    | Why                                                                           |
+| -------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **API**        | FastAPI + Uvicorn                                             | Async routes, Pydantic validation, `/docs` for free                           |
+| **ORM**        | SQLAlchemy 2.0 (`mapped_column`)                              | Typed models, `select/update/delete` constructs in repositories               |
+| **Migrations** | Alembic                                                       | Ordered `pgvector → research → documents → reports → sources` history         |
+| **Vector DB**  | Postgres 16 + pgvector `VECTOR(384)`                          | One DB for jobs + vectors; `cosine_distance` ordered search, no extra service |
+| **Embeddings** | `sentence-transformers:BAAI/bge-small-en-v1.5`                | Local, fast, 384-dim matches the column; normalized on query                  |
+| **Agent**      | LangGraph `StateGraph`                                        | Explicit `planner/researcher/tools/writer` graph with a countable loop        |
+| **LLM**        | LangChain-Groq (`qwen/qwen3.8-27b`)                           | Cheap structured output (`with_structured_output(model_output)`) with retry   |
+| **Web search** | Tavily (`advanced` depth)                                     | Answer + snippets with URLs that map 1:1 to `ResearchSource(web)`             |
+| **PDF**        | PyMuPDF (`fitz`) + `RecursiveCharacterTextSplitter(1000/150)` | Per-page text that survives scanned-layout gaps; overlap preserves context    |
+| **Jobs**       | Inngest                                                       | Durable steps + retries + failure hook, no broker to run                      |
+| **Infra**      | Docker Compose + `uv`                                         | `pgvector/pg16` + `redis:7-alpine` locally; reproducible Python >=3.13 env    |
 
 ---
 
 ## Product Limits
 
-| Constraint | Value |
-|---|---|
-| Query length | 3–500 chars (`user_query_body`) |
-| Document type | PDF only (`400` otherwise) |
-| Chunking | 1000 chars / 150 overlap per page |
-| Embedding dim | 384 (`VECTOR(384)` — model change = migration) |
-| Retrieval | top-5 SQL, top-2 passed to LLM (`content[:800]`) |
-| Web search | max 5 hits → top-3 to LLM (`content[:500]`), `include_answer=True` |
-| Agent loop | max 3 tool rounds, 6000-char evidence window |
-| Writer | `max_tokens=900`, `{title, summary, content}` only |
-| Job retries | 2 (Inngest), missing id = non-retriable |
-| Report read | DB only — no `GET /report` endpoint yet |
+| Constraint    | Value                                                              |
+| ------------- | ------------------------------------------------------------------ |
+| Query length  | 3–500 chars (`user_query_body`)                                    |
+| Document type | PDF only (`400` otherwise)                                         |
+| Chunking      | 1000 chars / 150 overlap per page                                  |
+| Embedding dim | 384 (`VECTOR(384)` — model change = migration)                     |
+| Retrieval     | top-5 SQL, top-2 passed to LLM (`content[:800]`)                   |
+| Web search    | max 5 hits → top-3 to LLM (`content[:500]`), `include_answer=True` |
+| Agent loop    | max 3 tool rounds, 6000-char evidence window                       |
+| Writer        | `max_tokens=900`, `{title, summary, content}` only                 |
+| Job retries   | 2 (Inngest), missing id = non-retriable                            |
+| Report read   | DB only — no `GET /report` endpoint yet                            |
 
 ---
 
@@ -464,6 +467,7 @@ docker run --rm -p 8288:8288 inngest/inngest inngest dev -u http://host.docker.i
 ## Roadmap
 
 **Shipped**
+
 - Async research jobs with status polling + failure messages
 - PDF ingest → chunk → embed → pgvector search
 - LangGraph planner/researcher/writer with web + doc tools and source dedup
@@ -471,6 +475,7 @@ docker run --rm -p 8288:8288 inngest/inngest inngest dev -u http://host.docker.i
 - Alembic history (pgvector, 384-dim fix, reports, sources)
 
 **Up next**
+
 - `GET /research/{id}/report` (+ sources) and `report` eager-load on detail GET
 - Pagination / filter by `status` on `GET /research/`
 - `AsyncSession` + `asyncpg` cutover

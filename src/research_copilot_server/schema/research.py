@@ -23,7 +23,7 @@ class ResearchResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     report: ResearchReportResponse | None = None
-    sources: list[SourceResponse] = []
+    sources: list[SourceResponse] = Field(default_factory=list)
 
     model_config = {
         "from_attributes": True,
@@ -41,6 +41,10 @@ class ResearchListResponse(BaseModel):
         "from_attributes": True,
         "populate_by_name": True,
     }
+
+
+class ResearchDeleteResponse(BaseModel):
+    message: str
 
 
 # Backward compatibility aliases

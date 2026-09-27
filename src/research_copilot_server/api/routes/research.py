@@ -3,10 +3,12 @@ from sqlalchemy.orm import Session
 
 from research_copilot_server.config.db import get_db
 from research_copilot_server.dependencies.auth import get_current_user
+from research_copilot_server.dependencies.rate_limit import rate_limit
 from research_copilot_server.models.user import User
 from research_copilot_server.schema.report import ResearchReportResponse, SourceResponse
 from research_copilot_server.schema.research import (
     ResearchListResponse,
+    ResearchDeleteResponse,
     ResearchResponse,
     create_research_response,
     paginated_research_response,
@@ -19,8 +21,19 @@ from research_copilot_server.services import research as research_service
 router = APIRouter()
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=ResearchResponse, include_in_schema=False)
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=ResearchResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ResearchResponse,
+    include_in_schema=False,
+    dependencies=[Depends(rate_limit("research", 5, 60))],
+)
+@router.post(
+    "/",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ResearchResponse,
+    dependencies=[Depends(rate_limit("research", 5, 60))],
+)
 async def register_user_query(
     user_query: user_query_body,
     current_user: User = Depends(get_current_user),
@@ -69,12 +82,12 @@ def get_research_sources(
     return research.sources
 
 
-@router.delete("/{research_id}", status_code=status.HTTP_200_OK)
+@router.delete("/{research_id}", status_code=status.HTTP_200_OK, response_model=ResearchDeleteResponse)
 def delete_research(
     research_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+) -> ResearchDeleteResponse:
     return research_service.delete_research(db, research_id, user_id=current_user.id)
 
 
