@@ -1,4 +1,5 @@
 import logging
+import os
 import inngest
 
 from research_copilot_server.config.db import SessionLocal
@@ -9,9 +10,14 @@ from research_copilot_server.repository import research as research_repository
 from research_copilot_server.services.workflow import workflow
 
 
-# Create an Inngest client
+# Create an Inngest client. In local development, the signing key must be a
+# valid 64-character hex string; using a plain word like "local" breaks the
+# SDK signature verification.
+DEFAULT_DEV_SIGNING_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
 inngest_client = inngest.Inngest(
-    app_id="fast_api_example",
+    app_id=os.getenv("INNGEST_APP_ID", "research-copilot"),
+    signing_key=os.getenv("INNGEST_SIGNING_KEY", DEFAULT_DEV_SIGNING_KEY),
     logger=logging.getLogger("uvicorn"),
 )
 

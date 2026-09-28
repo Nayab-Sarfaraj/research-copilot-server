@@ -48,7 +48,12 @@ Base.metadata.create_all(bind=engine)
 
 
 
-inngest.fast_api.serve(app, inngest_client, [process_research])
+inngest.fast_api.serve(
+    app,
+    inngest_client,
+    [process_research],
+    serve_path="/api/inngest",
+)
 
 
 
