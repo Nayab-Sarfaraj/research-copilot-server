@@ -23,9 +23,9 @@ def upgrade() -> None:
         "documents",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("metadata", sa.JSON(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column("metadata", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json")),
         sa.Column("embedding", VECTOR(1536), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
 
 
