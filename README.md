@@ -24,12 +24,14 @@ Queue a query · Agent plans, retrieves, cites · Poll through granular phases u
 
 ## What it does
 
-Register and authenticate with `POST /auth/register` or `POST /auth/login` to obtain a JWT Bearer token. Submit a natural-language query with `POST /research/`, upload domain PDFs with `POST /document`, and get back a structured report with `title`, `summary`, `content`, plus persisted `web` and `document` citations. A LangGraph agent (`planner → researcher ⇄ tools → writer`) executes the workflow asynchronously in the background via Inngest:
+Register and authenticate with `POST /auth/register` (which returns a JWT Bearer token immediately) or `POST /auth/login`, and inspect profile details via `GET /auth/me`. Submit a natural-language query with `POST /research/` (or `POST /research`), upload domain PDFs with `POST /document` (or `POST /documents`), and get back a structured report with `title`, `summary`, `content`, plus persisted `web` and `document` citations. A LangGraph agent (`planner → researcher ⇄ tools → writer`) executes the workflow asynchronously in the background via Inngest:
 - HTTP returns `201 { status: queued }` in milliseconds.
 - Research progress transitions through granular phase statuses: `queued → planning → researching → writing → completed` (or `failed`).
 - Poll `GET /research/{id}` for live status and eager-loaded results, or fetch dedicated report endpoints `GET /research/{id}/report` and `GET /research/{id}/sources`.
+- Manage research lifecycles with `PUT /research/{id}` (status update) and `DELETE /research/{id}` (cascading deletion of research, report, and sources).
 - View your paginated query history via `GET /research/?page=1&limit=10`.
 - Built-in sliding-window rate limiting protects against abuse (5 research queries/minute, 10 PDF uploads/hour).
+- Strict per-user data isolation ensures users only access, mutate, or delete their own documents, queries, and reports (`403 Forbidden` on cross-user access).
 
 Or query existing knowledge: upload PDFs first to build a local pgvector knowledge base, then execute queries that fuse `knowledge_search` (your uploaded documents) with `web_search` (Tavily, advanced depth).
 
@@ -207,10 +209,10 @@ research-copilot-server/
 │   ├── main.py                   # FastAPI app, CORS, error handling, router mounts, Inngest serve
 │   ├── api/routes/
 │   │   ├── auth.py               # POST /auth/register, POST /auth/login, GET /auth/me
-│   │   ├── research.py           # POST, GET (paginated), GET :id, GET :id/report, GET :id/sources, PUT, DELETE
+│   │   ├── research.py           # POST, GET (paginated), GET :id, GET :id/report, GET :id/sources, PUT :id, DELETE :id
 │   │   ├── document.py           # POST /document and /documents — PDF chunking & embeddings
 │   │   └── health.py             # GET / and GET /health
-│   ├── config/db.py              # Base, engine, SessionLocal, get_db (DATABASE_URL)
+│   ├── config/db.py              # Base, engine, SessionLocal, get_db (DATABASE_URL fallback)
 │   ├── dependencies/
 │   │   ├── auth.py               # JWT HTTPBearer guard (get_current_user)
 │   │   ├── model.py              # shared ChatGroq(GROQ_MODEL, max_tokens=900)
@@ -223,8 +225,8 @@ research-copilot-server/
 │   │   ├── research_source.py    # ResearchSource(title, url, web|document, metadata)
 │   │   └── documents.py          # Document(content, metadata JSON, VECTOR(384), FK to user)
 │   ├── schema/
-│   │   ├── auth.py               # user_register_body, user_login_body, user_response, token_response
-│   │   ├── research.py           # user_query_body, ResearchResponse, ResearchListResponse, update_research_body
+│   │   ├── auth.py               # user_register_body, user_login_body, user_response, token_response, user_register_response
+│   │   ├── research.py           # user_query_body, ResearchResponse, ResearchListResponse, update_research_body, ResearchDeleteResponse
 │   │   ├── report.py             # model_output (LLM), ResearchReportResponse, SourceResponse
 │   │   ├── document.py           # DocumentResponse, DocumentChunkResponse
 │   │   └── health.py             # ApiInfoResponse, HealthResponse
@@ -233,18 +235,21 @@ research-copilot-server/
 │   │   ├── research.py           # paginated select, eager load, update_status, update, delete
 │   │   └── document.py           # bulk insert + cosine_distance vector search
 │   ├── services/                 # Business logic + orchestration
-│   │   ├── auth.py               # bcrypt hash/verify, JWT token issuance & verification
-│   │   ├── research.py           # create (QUEUED + Inngest send), get, update, delete, report fetch
+│   │   ├── auth.py               # bcrypt hash/verify, JWT token issuance & decode, register/login
+│   │   ├── research.py           # create (QUEUED + Inngest send), get, update, delete, report fetch (with user auth checks)
 │   │   ├── document.py           # fitz → split → BGE embed → repository (with user_id)
 │   │   ├── retrieval.py          # query embed (normalized) → JSON top-k
 │   │   ├── workflow.py           # StateGraph, tools, planner/researcher/writer with phase updates
 │   │   └── llm.py                # legacy prompt helper
-│   └── inngest/index.py          # client + process_research + on_failure handler
-├── alembic/versions/             # 10 migrations: pgvector → research → docs → reports → sources → phase statuses → users
+│   └── inngest/index.py          # client (with signing key) + process_research + on_failure handler
+├── alembic/
+│   ├── env.py                    # Alembic env using config.db.DATABASE_URL
+│   └── versions/                 # 10 migrations: research → reports → queued → error → pgvector → docs → 384-dim → sources → phases → users
 ├── docker-compose.yaml           # pgvector/pgvector:pg16 (:5433) + redis:7-alpine (:6379)
 ├── pyproject.toml                # uv, Python >=3.13, dependencies
 ├── tests/
 │   └── test_rate_limit.py        # unit tests for sliding-window rate limiter
+├── .env.example                  # environment template
 └── README.md
 ```
 
@@ -278,12 +283,24 @@ class token_response(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: user_response
+
+class user_register_response(user_response):
+    access_token: str
+    token_type: str = "bearer"
+
+# Aliases: UserRegisterRequest, UserLoginRequest, UserResponse, TokenResponse, UserRegisterResponse
 ```
 
 ```python
 # schema/research.py & schema/report.py — HTTP Research & Reports
 class user_query_body(BaseModel):
     query: str = Field(..., min_length=3, max_length=500)
+
+class update_research_body(BaseModel):
+    status: ResearchStatus
+
+class ResearchDeleteResponse(BaseModel):
+    message: str
 
 class ResearchResponse(BaseModel):
     id: int
@@ -313,6 +330,8 @@ class ResearchReportResponse(BaseModel):
     created_at: datetime
     sources: list[SourceResponse] | None = None
     model_config = {"from_attributes": True}
+
+# Aliases: user_query_response, create_research_response, paginated_research_response, PaginatedResearchResponse, research_report_response
 ```
 
 ```python
@@ -365,16 +384,18 @@ class ResearchState(TypedDict):
 
 Copy to `.env` at repo root (`load_dotenv()` runs in `config/db.py`, `workflow.py`, `dependencies/model.py`, and `services/auth.py`).
 
-| Variable         | Default / Example                                                                             | Description                                                                                    |
-| ---------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`   | `postgresql+psycopg2://postgres:postgres@localhost:5433/research_copilot`                     | SQLAlchemy connection URL                                                                      |
-| `GROQ_API_KEY`   | *(required for LLM)*                                                                          | Groq API key for planner, researcher, and writer nodes                                         |
-| `TAVILY_API_KEY` | *(optional)*                                                                                  | Tavily search key — if absent, `web_search` returns `{"error": ...}` gracefully                |
-| `GROQ_MODEL`     | `qwen/qwen3.8-27b`                                                                            | Groq chat model identifier                                                                     |
-| `JWT_SECRET`     | `research-copilot-secret-jwt-key-2026-very-secure`                                            | Secret key used to sign and verify JWT authentication tokens (override in production)          |
-| `REDIS_URL`      | `redis://localhost:6379/0`                                                                    | Redis instance in compose for future distributed caching/locks                                 |
-| `INNGEST_DEV`    | `1`                                                                                           | Enables local Inngest development mode                                                         |
-| `PYTHONPATH`     | `src`                                                                                         | Allows module resolution for `research_copilot_server.*`                                       |
+| Variable              | Default / Example                                                                             | Description                                                                                    |
+| --------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`        | `postgresql+psycopg2://postgres:postgres@localhost:5433/research_copilot`                     | SQLAlchemy & Alembic connection URL (default in `config/db.py`)                                |
+| `GROQ_API_KEY`        | *(required for LLM)*                                                                          | Groq API key for planner, researcher, and writer nodes                                         |
+| `TAVILY_API_KEY`      | *(optional)*                                                                                  | Tavily search key — if absent, `web_search` returns `{"error": ...}` gracefully                |
+| `GROQ_MODEL`          | `qwen/qwen3.8-27b`                                                                            | Groq chat model identifier                                                                     |
+| `JWT_SECRET`          | `research-copilot-secret-jwt-key-2026-very-secure`                                            | Secret key used to sign and verify JWT authentication tokens (override in production)          |
+| `INNGEST_APP_ID`      | `research-copilot`                                                                            | Application ID configured on the Inngest client                                                |
+| `INNGEST_SIGNING_KEY` | `0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef`                          | 64-hex signing key for Inngest SDK webhook verification (required in production)               |
+| `REDIS_URL`           | `redis://localhost:6379/0`                                                                    | Redis instance in compose for future distributed caching/locks                                 |
+| `INNGEST_DEV`         | `1`                                                                                           | Enables local Inngest development mode                                                         |
+| `PYTHONPATH`          | `src`                                                                                         | Allows module resolution for `research_copilot_server.*`                                       |
 
 > [!WARNING]
 > Do not commit `.env` to version control. Always provide a high-entropy secret for `JWT_SECRET` in staging and production environments.
@@ -427,37 +448,50 @@ uv run python -m unittest discover tests
 # 1. Health check
 curl http://localhost:8000/health
 
-# 2. Register a new user
+# 2. Register a new user (returns user info + access_token directly)
 curl -X POST http://localhost:8000/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"researcher@example.com","password":"securepassword123","name":"Dr. Alice"}'
 
-# 3. Log in to acquire a JWT access token
+# 3. Or log in to acquire / refresh a JWT access token
 # (Save the access_token from the JSON response as $TOKEN)
 curl -X POST http://localhost:8000/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"researcher@example.com","password":"securepassword123"}'
 
-# 4. Upload domain PDF document (rate limit: 10/hour)
+# 4. Verify authenticated user identity
+curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/auth/me
+
+# 5. Upload domain PDF document (rate limit: 10/hour; accepts /document or /documents)
 curl -X POST http://localhost:8000/document \
   -H "Authorization: Bearer <TOKEN>" \
   -F "file=@paper.pdf"
 
-# 5. Queue a research query (rate limit: 5/minute)
+# 6. Queue a research query (rate limit: 5/minute; accepts /research or /research/)
 curl -X POST http://localhost:8000/research/ \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"query":"Impact of pgvector on modern RAG applications?"}'
 
-# 6. Poll research status and eager-loaded report
+# 7. Poll research status and eager-loaded report
 curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/research/1
 
-# 7. Fetch dedicated report and sources once status is completed
+# 8. Fetch dedicated report and sources once status is completed
 curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/research/1/report
 curl -H "Authorization: Bearer <TOKEN>" http://localhost:8000/research/1/sources
 
-# 8. List paginated research queries
+# 9. List paginated research queries
 curl -H "Authorization: Bearer <TOKEN>" "http://localhost:8000/research/?page=1&limit=10"
+
+# 10. Optional: Update research status manually
+curl -X PUT http://localhost:8000/research/1 \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"planning"}'
+
+# 11. Optional: Delete research query (cascades to report & sources)
+curl -X DELETE http://localhost:8000/research/1 \
+  -H "Authorization: Bearer <TOKEN>"
 ```
 
 ---
@@ -498,7 +532,7 @@ This gives clients fine-grained visibility when polling `GET /research/{id}`.
 <details>
 <summary><strong>JWT authentication and per-user data isolation</strong></summary>
 
-All document uploads and research operations are gated by `get_current_user` (`dependencies/auth.py`). Both `Document` and `Research` tables enforce a foreign key relationship to `users.id` with cascade deletion. Queries in `repository/research.py` filter by `user_id`, preventing unauthorized cross-user access to documents, queries, and reports.
+All document uploads and research operations are gated by `get_current_user` (`dependencies/auth.py`). Both `Document` and `Research` tables enforce a foreign key relationship to `users.id` with cascade deletion. All individual research endpoints (`GET /{id}`, `GET /{id}/report`, `GET /{id}/sources`, `PUT /{id}`, and `DELETE /{id}`) in `services/research.py` enforce ownership and return `403 Forbidden` if a user attempts to access, edit, or delete another user's research resource.
 
 </details>
 
@@ -515,7 +549,7 @@ Implemented in `dependencies/rate_limit.py` using thread-safe sliding windows pe
 <details>
 <summary><strong>Why Inngest, not Celery/RQ</strong></summary>
 
-`POST /research/` only inserts a `queued` row and fires `research/requested` (`services/research.py:18`). The durable steps (`get-research → run-research-workflow → save-research-report`, each with its own `SessionLocal`) live in `inngest/index.py:123` with `retries=2`. No broker code to maintain, each step replays independently, and `on_failure` maps any crash to `failed + error_message` without the client ever hanging.
+`POST /research/` only inserts a `queued` row and fires `research/requested` (`services/research.py:18`). The durable steps (`get-research → run-research-workflow → save-research-report`, each with its own `SessionLocal`) live in `inngest/index.py:129` with `retries=2`. The Inngest client supports configurable `INNGEST_APP_ID` and `INNGEST_SIGNING_KEY` (with a 64-char hex key fallback for dev signature verification) served at `/api/inngest`. No broker code to maintain, each step replays independently, and `on_failure` maps any crash to `failed + error_message` without the client ever hanging.
 
 </details>
 
@@ -536,7 +570,7 @@ Implemented in `dependencies/rate_limit.py` using thread-safe sliding windows pe
 <details>
 <summary><strong>Sources are extracted, deduped, then persisted</strong></summary>
 
-`researcher` JSON-parses every `tool` message: `{results: [...]}` → `_web_source_from_item` (`title/url/web`), plain lists → `_document_source_from_result` (`title from metadata.source/document`). Dedup key is `(type, url, title, metadata-JSON)`. `_save_report` (`inngest/index.py:70`) appends them as `ResearchSource` rows alongside the `ResearchReport` in one commit.
+`researcher` JSON-parses every `tool` message: `{results: [...]}` → `_web_source_from_item` (`title/url/web`), plain lists → `_document_source_from_result` (`title from metadata.source/document`). Dedup key is `(type, url, title, metadata-JSON)`. `_save_report` (`inngest/index.py:76`) appends them as `ResearchSource` rows alongside the `ResearchReport` in one commit.
 
 </details>
 
@@ -562,9 +596,9 @@ If `TAVILY_API_KEY` is unset, `tavily_client` is `None` and `web_search` returns
 </details>
 
 <details>
-<summary><strong>create_all + Alembic both exist — pick Alembic in prod</strong></summary>
+<summary><strong>Strict Alembic-driven migrations (create_all removed)</strong></summary>
 
-`main.py:47` runs `Base.metadata.create_all(bind=engine)` on boot, while `alembic/versions/` holds 10 ordered migrations. Keep `create_all` for throwaway dev only; in any shared environment run `uv run alembic upgrade head` and remove `create_all` so schema drift is strictly version-controlled.
+`Base.metadata.create_all(bind=engine)` was completely removed from `main.py` in favor of strict, version-controlled Alembic migrations. All schema initialization and table updates must be performed using `uv run alembic upgrade head` across all environments. `alembic/env.py` directly references `DATABASE_URL` from `config/db.py` and configures `include_object` to safely ignore transition columns like `embedding_1536`.
 
 </details>
 
@@ -578,14 +612,14 @@ If `TAVILY_API_KEY` is unset, `tavily_client` is `None` and `web_search` returns
 | **Auth**       | PyJWT + bcrypt + HTTPBearer                                   | Secure password hashing, stateless 24-hour JWT Bearer tokens, user scoping    |
 | **Rate Limit** | In-memory sliding window                                      | Granular per-user limits on costly endpoints with `Retry-After` headers       |
 | **ORM**        | SQLAlchemy 2.0 (`mapped_column`)                              | Strongly typed models, `select/update/delete` with eager loading              |
-| **Migrations** | Alembic (10 revisions)                                        | Ordered `pgvector → research → docs → reports → sources → phases → users`    |
+| **Migrations** | Alembic (10 ordered revisions)                                | `research → reports → queued → error → pgvector → docs → 384-dim → sources → phases → users` |
 | **Vector DB**  | Postgres 16 + pgvector `VECTOR(384)`                          | Unified DB for auth, jobs, vectors, reports; `cosine_distance` ordered search |
 | **Embeddings** | `sentence-transformers:BAAI/bge-small-en-v1.5`                | Local, fast, 384-dim matches vector column; normalized on query               |
 | **Agent**      | LangGraph `StateGraph`                                        | Explicit `planner/researcher/tools/writer` graph with loop guards and status  |
 | **LLM**        | LangChain-Groq (`qwen/qwen3.8-27b`)                           | Fast, cheap structured output (`with_structured_output(model_output)`)        |
 | **Web search** | Tavily (`advanced` depth)                                     | Snippets with URLs that map 1:1 to `ResearchSource(web)`                      |
 | **PDF**        | PyMuPDF (`fitz`) + `RecursiveCharacterTextSplitter(1000/150)` | Fast page text extraction preserving layout; chunk overlap preserves context  |
-| **Jobs**       | Inngest                                                       | Durable steps + retries + failure hook, no background queue broker needed     |
+| **Jobs**       | Inngest                                                       | Durable steps + retries + failure hook, served at `/api/inngest`              |
 | **Infra**      | Docker Compose + `uv`                                         | `pgvector/pg16` + `redis:7-alpine` locally; reproducible Python 3.13+ env     |
 
 ---
@@ -608,6 +642,10 @@ If `TAVILY_API_KEY` is unset, `tavily_client` is `None` and `web_search` returns
 | Job retries         | 2 retries (Inngest)                                                | Missing research ID is marked non-retriable                 |
 | Pagination          | Default `page=1, limit=10`, max `limit=100`                        | Supported on `GET /research/`                               |
 | Report read         | Eager-loaded in `GET /research/{id}` + dedicated `/report` endpoint | `GET /research/{id}/report` and `GET /research/{id}/sources`|
+| Research update     | `PUT /research/{id}`                                               | Updates research status (`update_research_body`)             |
+| Research deletion   | `DELETE /research/{id}`                                            | Cascades deletion of research, report, and sources          |
+| Document routes     | `POST /document` & `POST /documents`                               | Dual endpoint mounting with trailing slash support          |
+| Authorization       | User-scoped ownership                                              | Cross-user access or mutations return `403 Forbidden`       |
 
 ---
 
@@ -629,9 +667,12 @@ docker run --rm -p 8288:8288 inngest/inngest inngest dev -u http://host.docker.i
 **Shipped**
 
 - [x] User authentication (JWT Bearer tokens, bcrypt hashing, `/auth/register`, `/auth/login`, `/auth/me`)
-- [x] Per-user data ownership and isolation for documents, research queries, and reports
+- [x] Per-user data ownership and isolation for documents, research queries, and reports (`403 Forbidden` protection)
 - [x] Granular research phase statuses (`planning`, `researching`, `writing`) with live DB updates
 - [x] Async research pipeline with Inngest durable steps (`get-research → run-research-workflow → save-research-report`)
+- [x] Strict Alembic-only DDL: removed `Base.metadata.create_all` from `main.py` in favor of versioned migrations
+- [x] Full research lifecycle mutations: status updates (`PUT /research/{id}`) and cascading deletion (`DELETE /research/{id}`)
+- [x] Dual route mounts (`/document` and `/documents`, `/research` and `/research/`) with slash tolerance
 - [x] Per-user sliding-window rate limiting on research queries and PDF uploads
 - [x] PDF ingestion → RecursiveCharacter text chunking → BGE-small embeddings → pgvector cosine search
 - [x] LangGraph planner/researcher/writer workflow with web (Tavily) + knowledge tools and source deduplication
@@ -646,6 +687,5 @@ docker run --rm -p 8288:8288 inngest/inngest inngest dev -u http://host.docker.i
 - [ ] `AsyncSession` + `asyncpg` cutover to eliminate synchronous DB blocking on the event loop
 - [ ] Redis-backed rate limiting for multi-worker / multi-instance deployment
 - [ ] Lazy embedding-model singleton to optimize server cold-start and memory usage
-- [ ] Remove `create_all` from `main.py` in favor of strict Alembic-only DDL
 - [ ] Expand test suite: route integration tests, workflow graph tests, retrieval similarity validation
 - [ ] Dockerfile + CI pipeline (GitHub Actions) and hosted Inngest production configuration guide
